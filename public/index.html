@@ -13,7 +13,7 @@
   #nav{position:absolute;left:6vw;bottom:8vh;display:flex;flex-direction:column;gap:16px}
   .nav{font-size:28px;font-weight:700;letter-spacing:.06em;opacity:.8;cursor:pointer;width:max-content;transform-origin:left center;transition:transform .15s ease,opacity .15s,color .15s;text-shadow:0 2px 10px rgba(0,0,0,.7)}
   .nav:hover{transform:scale(1.3);opacity:1;color:#ff5a3c}
-  .panel{position:absolute;left:min(42vw,420px);bottom:8vh;width:340px;display:none;flex-direction:column;gap:14px;padding:22px 24px;background:rgba(8,12,22,.78);border-radius:12px;backdrop-filter:blur(6px)}
+  .panel{position:fixed;z-index:30;left:min(42vw,420px);bottom:8vh;width:340px;display:none;flex-direction:column;gap:14px;padding:22px 24px;background:rgba(8,12,22,.78);border-radius:12px;backdrop-filter:blur(6px)}
   .panel h2{margin:0 0 4px;font-size:22px}
   .panel label{font-size:14px;opacity:.85;display:flex;justify-content:space-between}
   .panel input[type=text]{padding:10px 12px;border-radius:8px;border:0;font-size:16px;width:100%;box-sizing:border-box}
@@ -38,7 +38,9 @@
   #score td:nth-child(n+2),#score th:nth-child(n+2){text-align:right}
   #center{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:30px;font-weight:800;text-shadow:0 0 8px #000;pointer-events:auto}
   #dead{background:rgba(120,0,0,.35)}
-  #pause{background:rgba(0,0,0,.5);cursor:pointer;pointer-events:auto;flex-direction:column}
+  #pause{background:linear-gradient(90deg,rgba(5,8,16,.88) 0%,rgba(5,8,16,.55) 60%,rgba(5,8,16,.3) 100%);pointer-events:auto}
+  #pause h1{position:absolute;left:6vw;top:9vh;margin:0;font-size:clamp(40px,7vw,90px);font-weight:900;letter-spacing:.04em}
+  #pnav{position:absolute;left:6vw;bottom:8vh;display:flex;flex-direction:column;gap:16px}
   #info{position:absolute;left:20px;top:20px;font-size:12px;opacity:.7;line-height:1.5}
 </style>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
@@ -64,20 +66,21 @@
     </div>
   </div>
 
-  <div class="panel" id="pSet">
-    <h2>Ajustes</h2>
-    <label>Sensibilidad <span id="sensV"></span></label>
-    <input type="range" id="sens" min="0.2" max="3" step="0.05">
-    <label>Sonido <span id="volV"></span></label>
-    <input type="range" id="vol" min="0" max="100" step="1">
-    <div class="row"><div class="nav back">Volver</div></div>
-  </div>
-
   <div id="bye">
     <div>Gracias por jugar.<br>Ya puedes cerrar esta pestaña.</div>
     <div class="nav" id="byeBack">Volver</div>
   </div>
 </div>
+<!-- Ajustes: se usa desde el menú principal y desde la pausa -->
+<div class="panel" id="pSet">
+  <h2>Ajustes</h2>
+  <label>Sensibilidad <span id="sensV"></span></label>
+  <input type="range" id="sens" min="0.2" max="3" step="0.05">
+  <label>Sonido <span id="volV"></span></label>
+  <input type="range" id="vol" min="0" max="100" step="1">
+  <div class="row"><div class="nav back">Volver</div></div>
+</div>
+
 <div id="hud">
   <div id="info"></div>
   <div id="cross"></div><div id="hit"></div><div id="flash"></div>
@@ -86,9 +89,13 @@
   <div id="feed"></div>
   <div id="score"></div>
   <div id="center"><span id="deadtxt"></span></div>
-  <div id="pause" class="c" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:30px;font-weight:800">
-    <div>Click para continuar</div>
-    <div class="nav" id="tomenu">Volver al menú</div>
+  <div id="pause" style="position:absolute;inset:0;display:none">
+    <h1>PAUSA</h1>
+    <div id="pnav">
+      <div class="nav" id="pResume">Reanudar</div>
+      <div class="nav" id="pSetBtn">Ajustes</div>
+      <div class="nav" id="pExit">Salir</div>
+    </div>
   </div>
 </div>
 
@@ -452,7 +459,7 @@ function start(on) {
 }
 function backToMenu(msg) {
   playing = false; online = false; me.alive = false; myId = null;
-  $('pause').style.display = 'none'; showDead(null); $('feed').innerHTML = '';
+  $('pause').style.display = 'none'; showPanel(null); showDead(null); $('feed').innerHTML = '';
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   for (const e of [...others.values()]) removeEntity(e);
   document.exitPointerLock();
@@ -471,7 +478,10 @@ $('bExit').onclick = () => {
 };
 $('byeBack').onclick = () => { $('bye').style.display = 'none'; };
 for (const b of document.querySelectorAll('.back')) b.onclick = () => showPanel(null);
-$('tomenu').onclick = e => { e.stopPropagation(); backToMenu(); };
+// --- menú de pausa (Esc) ---
+$('pResume').onclick = () => renderer.domElement.requestPointerLock();
+$('pSetBtn').onclick = () => showPanel('pSet');
+$('pExit').onclick = () => backToMenu();
 
 // --- ajustes ---
 $('sens').value = settings.sens;
@@ -489,8 +499,16 @@ renderer.domElement.addEventListener('click', () => { if (playing && !locked) re
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
   $('pause').style.display = playing && !locked ? 'flex' : 'none';
+  if (locked) showPanel(null);
+  lockRetried = false;
 });
-$('pause').onclick = () => renderer.domElement.requestPointerLock();
+// Los navegadores a veces rechazan volver a capturar el mouse justo después de Esc: se reintenta una vez
+let lockRetried = false;
+document.addEventListener('pointerlockerror', () => {
+  if (lockRetried || !playing) return;
+  lockRetried = true;
+  setTimeout(() => { if (playing && !locked) renderer.domElement.requestPointerLock(); }, 1300);
+});
 
 document.addEventListener('mousemove', e => {
   if (!locked) return;
