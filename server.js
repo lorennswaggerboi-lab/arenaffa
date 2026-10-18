@@ -63,7 +63,7 @@ wss.on('connection', ws => {
         id: nextId++, ws,
         name: String(m.name || 'Jugador').slice(0, 16),
         x: s[0], y: s[1], z: s[2], yaw: 0, pitch: 0,
-        hp: 100, k: 0, d: 0, lastShot: 0,
+        hp: 100, k: 0, d: 0, lastShot: 0, w: 0,
       };
       players.set(p.id, p);
       send(ws, { t: 'welcome', id: p.id, spawn: s });
@@ -77,6 +77,7 @@ wss.on('connection', ws => {
       p.z = Math.max(-30, Math.min(30, num(m.z)));
       p.yaw = num(m.yaw);
       p.pitch = num(m.pitch);
+      p.w = Math.max(0, Math.min(WEAPONS.length - 1, m.w | 0)); // arma en mano, para que los demás la vean
     }
 
     // Solo efectos visuales (trazador) para los demás
@@ -122,7 +123,7 @@ setInterval(() => {
   if (players.size === 0) return;
   const list = [...players.values()].map(p => ({
     id: p.id, name: p.name, x: p.x, y: p.y, z: p.z,
-    yaw: p.yaw, pitch: p.pitch, hp: p.hp, k: p.k, d: p.d,
+    yaw: p.yaw, pitch: p.pitch, w: p.w, hp: p.hp, k: p.k, d: p.d,
   }));
   broadcast({ t: 'snap', p: list });
 }, 50);
